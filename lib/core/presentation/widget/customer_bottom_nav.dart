@@ -14,11 +14,18 @@ class CustomerBottomNav extends StatefulWidget {
 
 class _CustomerBottomNavState extends State<CustomerBottomNav> {
   late int currentIndex;
+  bool _isDisposed = false;
 
   @override
   void initState() {
     super.initState();
     currentIndex = widget.initialIndex;
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    super.dispose();
   }
 
   @override
@@ -150,6 +157,8 @@ class _CustomerBottomNavState extends State<CustomerBottomNav> {
   }
 
   void _onItemTapped(BuildContext context, int index) {
+    if (_isDisposed || !mounted) return;
+
     setState(() {
       currentIndex = index;
     });

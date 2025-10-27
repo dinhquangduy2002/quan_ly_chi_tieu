@@ -23,6 +23,7 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
   List<TransactionEntity> _transactions = [];
   bool _isLoading = false;
   String? _error;
+  bool _isDisposed = false;
 
   @override
   void initState() {
@@ -30,8 +31,14 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
     _loadTransactions();
   }
 
+  @override
+  void dispose() {
+    _isDisposed = true;
+    super.dispose();
+  }
+
   Future<void> _loadTransactions() async {
-    if (!mounted) return; // Thêm check mounted ở đầu
+    if (_isDisposed || !mounted) return;
 
     setState(() {
       _isLoading = true;
@@ -39,20 +46,20 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
 
     try {
       final transactions = await _getTransactions();
-      if (mounted) {
+      if (!_isDisposed && mounted) {
         setState(() {
           _transactions = transactions;
           _error = null;
         });
       }
     } catch (e) {
-      if (mounted) {
+      if (!_isDisposed && mounted) {
         setState(() {
           _error = 'Lỗi khi tải dữ liệu: $e';
         });
       }
     } finally {
-      if (mounted) {
+      if (!_isDisposed && mounted) {
         setState(() {
           _isLoading = false;
         });
@@ -60,36 +67,36 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
     }
   }
 
+  void _showSafeSnackBar(String message, {bool isError = false}) {
+    if (_isDisposed || !mounted) return;
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_isDisposed && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: isError ? AppColors.error : AppColors.success,
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    });
+  }
+
   Future<void> _deleteTransactionById(String id) async {
     try {
       await _deleteTransaction(id);
-      // Reload transactions after deletion
       await _loadTransactions();
 
-      // Kiểm tra mounted trước khi hiển thị SnackBar
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Đã xóa giao dịch thành công'),
-            backgroundColor: AppColors.success,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
+      _showSafeSnackBar('Đã xóa giao dịch thành công');
+
     } catch (e) {
-      // Kiểm tra mounted trước khi hiển thị lỗi
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi khi xóa giao dịch: $e'),
-            backgroundColor: AppColors.error,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
+      _showSafeSnackBar('Lỗi khi xóa giao dịch: $e', isError: true);
     }
   }
-
 
   // Tính tổng thu nhập và chi tiêu từ dữ liệu thực
   double get _monthlyExpenseTotal {
@@ -130,23 +137,25 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
   }
 
   void _navigateToCreateTransaction() {
+    if (_isDisposed || !mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => TransactionsFormPage(
-          onSuccess: _loadTransactions, // Sử dụng onSuccess thay vì onCreate
+          onSuccess: _loadTransactions,
         ),
       ),
     );
   }
 
   void _navigateToEditTransaction(TransactionEntity transaction) {
+    if (_isDisposed || !mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => TransactionsFormPage(
           transaction: transaction,
-          onSuccess: _loadTransactions, // Sử dụng onSuccess thay vì onUpdate
+          onSuccess: _loadTransactions,
         ),
       ),
     );
@@ -156,12 +165,6 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      floatingActionButton: FloatingActionButton(
-        onPressed: _navigateToCreateTransaction,
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add),
-      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -190,7 +193,6 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
     );
   }
 
-  // Các widget UI khác giữ nguyên, chỉ cần cập nhật các phương thức xóa
   Widget _buildCustomHeader() {
     return Container(
       width: double.infinity,
@@ -209,7 +211,11 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
             children: [
               IconButton(
                 icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
+                onPressed: () {
+                  if (!_isDisposed && mounted) {
+                    Navigator.pop(context);
+                  }
+                },
               ),
               const Text(
                 'Thu - chi',
@@ -462,6 +468,8 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
   }
 
   void _showTransactionDetail(TransactionEntity transaction) {
+    if (_isDisposed || !mounted) return;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -525,7 +533,9 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
                         ),
                         onPressed: () {
                           Navigator.pop(context);
-                          _showDeleteConfirmation(transaction);
+                          if (!_isDisposed && mounted) {
+                            _showDeleteConfirmation(transaction);
+                          }
                         },
                       ),
                     ),
@@ -550,7 +560,9 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
                         ),
                         onPressed: () {
                           Navigator.pop(context);
-                          _navigateToEditTransaction(transaction);
+                          if (!_isDisposed && mounted) {
+                            _navigateToEditTransaction(transaction);
+                          }
                         },
                       ),
                     ),
@@ -627,6 +639,8 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
   }
 
   void _showDeleteConfirmation(TransactionEntity transaction) {
+    if (_isDisposed || !mounted) return;
+
     showDialog(
       context: context,
       builder: (context) {
@@ -647,7 +661,9 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(context);
-                _deleteTransactionById(transaction.id);
+                if (!_isDisposed && mounted) {
+                  _deleteTransactionById(transaction.id);
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,

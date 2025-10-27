@@ -1,6 +1,8 @@
 // File: lib/features/transactions/presentation/pages/transactions_form_page.dart
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/presentation/theme/app_colors.dart';
+import '../../../../core/routing/app_routes.dart';
 import '../../domain/entities/transaction_entity.dart';
 import '../../domain/usecases/create_transaction.dart';
 import '../../domain/usecases/update_transaction.dart';
@@ -35,9 +37,10 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
 
   final CreateTransaction _createTransaction = CreateTransaction(TransactionRepositoryImpl());
   final UpdateTransaction _updateTransaction = UpdateTransaction(TransactionRepositoryImpl());
-  final DeleteTransaction _deleteTransactionUseCase = DeleteTransaction(TransactionRepositoryImpl()); // Đổi tên
+  final DeleteTransaction _deleteTransactionUseCase = DeleteTransaction(TransactionRepositoryImpl());
 
   bool _isLoading = false;
+  bool _isDisposed = false;
 
   // Dữ liệu mock
   final List<String> _categories = [
@@ -95,6 +98,7 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _titleController.dispose();
     _amountController.dispose();
     _noteController.dispose();
@@ -102,6 +106,25 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
   }
 
   bool get _isEditing => widget.transaction != null;
+
+  void _showSafeSnackBar(String message, {bool isError = false}) {
+    if (_isDisposed || !mounted) return;
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_isDisposed && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: isError ? AppColors.error : AppColors.success,
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    });
+  }
 
   void _submitForm() async {
     if (_formKey.currentState!.validate()) {
@@ -132,34 +155,26 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
           await _createTransaction(transaction);
         }
 
-        // Kiểm tra mounted trước khi hiển thị SnackBar
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(_isEditing ? 'Cập nhật giao dịch thành công!' : 'Tạo giao dịch thành công!'),
-              backgroundColor: AppColors.success,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
+        _showSafeSnackBar(
+            _isEditing ? 'Cập nhật giao dịch thành công!' : 'Tạo giao dịch thành công!'
+        );
 
         widget.onSuccess?.call();
-        if (mounted) {
-          Navigator.pop(context);
-        }
+
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (!_isDisposed && mounted) {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go(AppRoutes.transactions);
+            }
+          }
+        });
+
       } catch (e) {
-        // Kiểm tra mounted trước khi hiển thị lỗi
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Lỗi: $e'),
-              backgroundColor: AppColors.error,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
+        _showSafeSnackBar('Lỗi: $e', isError: true);
       } finally {
-        if (mounted) {
+        if (!_isDisposed && mounted) {
           setState(() {
             _isLoading = false;
           });
@@ -169,6 +184,8 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
   }
 
   Future<void> _selectDate() async {
+    if (!mounted) return;
+
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
@@ -185,16 +202,15 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
         );
       },
     );
-    if (picked != null && picked != _selectedDate) {
+    if (picked != null && picked != _selectedDate && !_isDisposed && mounted) {
       setState(() {
         _selectedDate = picked;
       });
     }
   }
 
-  // Đổi tên phương thức thành _performDelete
   Future<void> _performDelete() async {
-    if (!_isEditing) return;
+    if (!_isEditing || _isDisposed || !mounted) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -220,7 +236,7 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
       ),
     );
 
-    if (confirmed == true) {
+    if (confirmed == true && !_isDisposed && mounted) {
       setState(() {
         _isLoading = true;
       });
@@ -228,34 +244,24 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
       try {
         await _deleteTransactionUseCase(widget.transaction!.id);
 
-        // Kiểm tra mounted trước khi hiển thị SnackBar
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Đã xóa giao dịch thành công'),
-              backgroundColor: AppColors.success,
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
+        _showSafeSnackBar('Đã xóa giao dịch thành công');
 
         widget.onSuccess?.call();
-        if (mounted) {
-          Navigator.pop(context);
-        }
+
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (!_isDisposed && mounted) {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go(AppRoutes.transactions);
+            }
+          }
+        });
+
       } catch (e) {
-        // Kiểm tra mounted trước khi hiển thị lỗi
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Lỗi khi xóa giao dịch: $e'),
-              backgroundColor: AppColors.error,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
+        _showSafeSnackBar('Lỗi khi xóa giao dịch: $e', isError: true);
       } finally {
-        if (mounted) {
+        if (!_isDisposed && mounted) {
           setState(() {
             _isLoading = false;
           });
@@ -279,7 +285,7 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
           if (_isEditing)
             IconButton(
               icon: const Icon(Icons.delete_outline),
-              onPressed: _isLoading ? null : _performDelete, // Sử dụng tên mới
+              onPressed: _isLoading ? null : _performDelete,
             ),
         ],
       ),
@@ -436,9 +442,11 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
       children: [
         GestureDetector(
           onTap: () {
-            setState(() {
-              _selectedType = TransactionType.expense;
-            });
+            if (!_isDisposed && mounted) {
+              setState(() {
+                _selectedType = TransactionType.expense;
+              });
+            }
           },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -462,9 +470,11 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
         const SizedBox(width: 8),
         GestureDetector(
           onTap: () {
-            setState(() {
-              _selectedType = TransactionType.income;
-            });
+            if (!_isDisposed && mounted) {
+              setState(() {
+                _selectedType = TransactionType.income;
+              });
+            }
           },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -526,6 +536,8 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
   }
 
   void _showCategoryPicker() {
+    if (!mounted) return;
+
     showModalBottomSheet(
       context: context,
       builder: (context) {
@@ -546,9 +558,11 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
                       title: Text(category),
                       trailing: _selectedCategory == category ? const Icon(Icons.check, color: AppColors.primary) : null,
                       onTap: () {
-                        setState(() {
-                          _selectedCategory = category;
-                        });
+                        if (!_isDisposed && mounted) {
+                          setState(() {
+                            _selectedCategory = category;
+                          });
+                        }
                         Navigator.pop(context);
                       },
                     );
@@ -603,7 +617,7 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
                 );
               }).toList(),
               onChanged: (value) {
-                if (value != null) {
+                if (value != null && !_isDisposed && mounted) {
                   setState(() {
                     _selectedIcon = value;
                   });
@@ -616,13 +630,13 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
         Expanded(
           child: _buildShadowContainer(
             child: DropdownButtonFormField<int>(
-              value: _selectedColor.value, // Sử dụng giá trị int của Color
+              value: _selectedColor.value,
               decoration: _customInputDecoration.copyWith(
                 labelText: 'Màu sắc',
               ),
               items: _colors.map((color) {
                 return DropdownMenuItem<int>(
-                  value: color.value, // Sử dụng color value làm identifier
+                  value: color.value,
                   child: Row(
                     children: [
                       Container(
@@ -640,7 +654,7 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
                 );
               }).toList(),
               onChanged: (value) {
-                if (value != null) {
+                if (value != null && !_isDisposed && mounted) {
                   setState(() {
                     _selectedColor = Color(value);
                   });
