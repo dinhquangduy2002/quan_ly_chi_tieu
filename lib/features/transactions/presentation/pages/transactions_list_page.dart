@@ -97,23 +97,30 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
       _showSafeSnackBar('Lỗi khi xóa giao dịch: $e', isError: true);
     }
   }
+  List<TransactionEntity> get _monthlyTransactions {
+    final now = DateTime.now();
+    return _transactions.where((transaction) {
+      return transaction.date.year == now.year &&
+          transaction.date.month == now.month;
+    }).toList();
+  }
 
   // Tính tổng thu nhập và chi tiêu từ dữ liệu thực
   double get _monthlyExpenseTotal {
-    return _transactions
+    return _monthlyTransactions
         .where((t) => t.type == TransactionType.expense)
         .fold(0, (sum, transaction) => sum + transaction.amount.abs());
   }
 
   double get _monthlyIncomeTotal {
-    return _transactions
+    return _monthlyTransactions
         .where((t) => t.type == TransactionType.income)
         .fold(0, (sum, transaction) => sum + transaction.amount);
   }
 
   Map<DateTime, List<TransactionEntity>> get _groupedTransactions {
     final Map<DateTime, List<TransactionEntity>> grouped = {};
-    for (var transaction in _transactions) {
+    for (var transaction in _monthlyTransactions) {
       final date = DateTime(transaction.date.year, transaction.date.month, transaction.date.day);
       if (!grouped.containsKey(date)) {
         grouped[date] = [];
@@ -134,18 +141,6 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
 
   String _formatDate(DateTime date) {
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
-  }
-
-  void _navigateToCreateTransaction() {
-    if (_isDisposed || !mounted) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => TransactionsFormPage(
-          onSuccess: _loadTransactions,
-        ),
-      ),
-    );
   }
 
   void _navigateToEditTransaction(TransactionEntity transaction) {
