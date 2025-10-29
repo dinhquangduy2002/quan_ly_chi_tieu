@@ -42,7 +42,7 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
   bool _isLoading = false;
   bool _isDisposed = false;
 
-  // Dữ liệu mock
+
   final List<String> _categories = [
     'Chi tiêu hàng ngày',
     'Đào tạo',

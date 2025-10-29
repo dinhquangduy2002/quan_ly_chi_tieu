@@ -2,8 +2,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:quan_ly_chi_tieu/features/account/presentation/pages/account_page.dart';
 import 'package:quan_ly_chi_tieu/features/transactions/presentation/pages/transactions_form_page.dart';
 import 'package:quan_ly_chi_tieu/features/transactions/presentation/pages/transactions_list_page.dart';
+import '../../features/auth/domain/entities/user_entity.dart';
+import '../../features/statistics/presentation/pages/statistics_page.dart';
 import 'go_router_refresh_change.dart';
 import 'app_routes.dart';
 import '../presentation/widget/customer_bottom_nav.dart';
@@ -46,8 +49,19 @@ class AppGoRouter {
           GoRoute(path: AppRoutes.home, builder: (context, state) => const HomePage()),
           GoRoute(path: AppRoutes.transactions, builder: (context, state) => const TransactionsListPage()),
           GoRoute(path: AppRoutes.addTransaction, builder: (context, state) => const TransactionsFormPage()),
+          GoRoute(path: AppRoutes.statistics, builder: (context, state) => const StatisticsPage()),
           GoRoute(path: AppRoutes.statistics, builder: (context, state) => const HomePage()),
-          GoRoute(path: AppRoutes.profile, builder: (context, state) => const HomePage()),
+          GoRoute(
+            path: AppRoutes.profile,
+            builder: (context, state) {
+              final firebaseUser = FirebaseAuth.instance.currentUser;
+              final userEntity = UserEntity(
+                uid: firebaseUser?.uid ?? '',
+                email: firebaseUser?.email,
+              );
+              return AccountPage(user: userEntity);
+            },
+          ),
         ],
       ),
     ],

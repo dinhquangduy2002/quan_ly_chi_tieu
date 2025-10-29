@@ -1,4 +1,3 @@
-// File: lib/features/home/presentation/pages/home_page.dart
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../../../core/presentation/theme/app_colors.dart';
@@ -22,6 +21,7 @@ class _HomePageState extends State<HomePage> {
   double _monthlyExpense = 0;
   String _selectedType = 'Chi';
   bool _isLoading = true;
+  DateTime _selectedMonth = DateTime.now();
 
   List<TransactionEntity> _allTransactions = [];
   List<TransactionEntity> _filteredTransactions = [];
@@ -52,25 +52,29 @@ class _HomePageState extends State<HomePage> {
     double totalExpense = 0;
 
     for (var transaction in _allTransactions) {
+      // Không lọc tháng nữa — lấy toàn bộ giao dịch
       if (transaction.type == TransactionType.income) {
         totalIncome += transaction.amount;
-      } else {
+      } else if (transaction.type == TransactionType.expense) {
         totalExpense += transaction.amount;
       }
     }
 
     setState(() {
-      _totalBalance = totalIncome - totalExpense;
-      _monthlyIncome = totalIncome;
-      _monthlyExpense = totalExpense;
+      _totalBalance = totalIncome + totalExpense; // số dư ví chung
+      _monthlyIncome = totalIncome; // tổng thu toàn thời gian
+      _monthlyExpense = totalExpense; // tổng chi toàn thời gian
     });
   }
 
   void _filterTransactions() {
     final filtered = _allTransactions
-        .where((transaction) => _selectedType == 'Chi'
-        ? transaction.type == TransactionType.expense
-        : transaction.type == TransactionType.income)
+        .where((transaction) =>
+    transaction.date.month == _selectedMonth.month &&
+        transaction.date.year == _selectedMonth.year &&
+        (_selectedType == 'Chi'
+            ? transaction.type == TransactionType.expense
+            : transaction.type == TransactionType.income))
         .toList();
 
     filtered.sort((a, b) => b.date.compareTo(a.date));
@@ -78,6 +82,25 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _filteredTransactions = filtered.take(4).toList();
     });
+    _calculateWalletData();
+  }
+
+  Future<void> _pickMonth() async {
+    final now = DateTime.now();
+    final result = await showDatePicker(
+      context: context,
+      initialDate: _selectedMonth,
+      firstDate: DateTime(now.year - 3),
+      lastDate: DateTime(now.year + 3),
+      locale: const Locale('vi', 'VN'),
+    );
+
+    if (result != null) {
+      setState(() {
+        _selectedMonth = DateTime(result.year, result.month);
+        _filterTransactions();
+      });
+    }
   }
 
   @override
@@ -95,30 +118,16 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 24),
               _buildTotalBalanceSection(),
               const SizedBox(height: 24),
+              Divider(color: AppColors.border.withOpacity(0.4)),
+              const SizedBox(height: 12),
               _buildRecentTransactionsHeader(),
               const SizedBox(height: 16),
               _buildTransactionListOrEmptyState(),
-              const SizedBox(height: 40),
-              Center(
-                child: Container(
-                  padding:
-                  const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Text(
-                    'Biểu đồ thu - chi',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 24),
+              Divider(color: AppColors.border.withOpacity(0.4)),
+              const SizedBox(height: 16),
+              _buildChartHeader(), // dòng "Biểu đồ thu - chi" + lọc tháng
+              const SizedBox(height: 30),
               _buildPieChartsSection(),
               const SizedBox(height: 80),
             ],
@@ -130,14 +139,13 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildHeader() {
     final userName = 'Hồng';
-
     return Row(
       children: [
         CircleAvatar(
           radius: 26,
           backgroundColor: AppColors.primary,
           child: Text(
-            userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
+            userName[0].toUpperCase(),
             style: const TextStyle(
                 color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
           ),
@@ -164,7 +172,6 @@ class _HomePageState extends State<HomePage> {
           icon: Icon(Icons.search, color: AppColors.textPrimary, size: 28),
           onPressed: () {},
         ),
-        const SizedBox(width: 8),
         IconButton(
           icon: Icon(Icons.notifications_outlined,
               color: AppColors.textPrimary, size: 28),
@@ -277,6 +284,42 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildChartHeader() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Text(
+            'Biểu đồ thu - chi',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: AppColors.primary,
+              letterSpacing: 1,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          icon: const Icon(Icons.calendar_month, color: AppColors.primary),
+          onPressed: _pickMonth,
+        ),
+        Text(
+          '${_selectedMonth.month}/${_selectedMonth.year}',
+          style: const TextStyle(
+              fontSize: 14,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w500),
+        ),
+      ],
+    );
+  }
+
   Widget _buildPieChartsSection() {
     final incomeGroups = _groupByCategory(TransactionType.income);
     final expenseGroups = _groupByCategory(TransactionType.expense);
@@ -292,7 +335,10 @@ class _HomePageState extends State<HomePage> {
 
   Map<String, double> _groupByCategory(TransactionType type) {
     final map = <String, double>{};
-    for (var t in _allTransactions.where((e) => e.type == type)) {
+    for (var t in _allTransactions.where((e) =>
+    e.type == type &&
+        e.date.month == _selectedMonth.month &&
+        e.date.year == _selectedMonth.year)) {
       map[t.category] = (map[t.category] ?? 0) + t.amount;
     }
     return map;
@@ -427,7 +473,14 @@ class _HomePageState extends State<HomePage> {
       ),
       child: Column(
         children: _filteredTransactions
-            .map((transaction) => _buildTransactionItem(transaction))
+            .map((transaction) => Column(
+          children: [
+            _buildTransactionItem(transaction),
+            if (transaction !=
+                _filteredTransactions.last) // kẻ ngang ngăn từng dòng
+              Divider(color: AppColors.border.withOpacity(0.3)),
+          ],
+        ))
             .toList(),
       ),
     );
@@ -444,8 +497,7 @@ class _HomePageState extends State<HomePage> {
                 size: 60, color: AppColors.textLight),
             const SizedBox(height: 12),
             Text('Chưa có giao dịch ${_selectedType.toLowerCase()} gần đây',
-                style:
-                TextStyle(fontSize: 16, color: AppColors.textSecondary)),
+                style: TextStyle(fontSize: 16, color: AppColors.textSecondary)),
           ],
         ),
       ),
@@ -457,56 +509,52 @@ class _HomePageState extends State<HomePage> {
     final Color amountColor =
     isIncome ? AppColors.success : AppColors.error;
 
-    return AnimatedOpacity(
-      duration: const Duration(milliseconds: 300),
-      opacity: 1.0,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: transaction.color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(transaction.icon,
-                  color: transaction.color, size: 20),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: transaction.color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(transaction.title,
-                      style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.textPrimary)),
-                  Text(transaction.category,
-                      style: TextStyle(
-                          fontSize: 12, color: AppColors.textSecondary)),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            child: Icon(transaction.icon,
+                color: transaction.color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '${isIncome ? '+' : '-'}${transaction.amount.toStringAsFixed(0)}',
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: amountColor),
-                ),
-                Text('${transaction.date.day}/${transaction.date.month}',
+                Text(transaction.title,
+                    style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textPrimary)),
+                Text(transaction.category,
                     style: TextStyle(
-                        fontSize: 12, color: AppColors.textLight)),
+                        fontSize: 12, color: AppColors.textSecondary)),
               ],
             ),
-          ],
-        ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${isIncome ? '+' : '-'}${transaction.amount.toStringAsFixed(0)}',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: amountColor),
+              ),
+              Text('${transaction.date.day}/${transaction.date.month}',
+                  style:
+                  TextStyle(fontSize: 12, color: AppColors.textLight)),
+            ],
+          ),
+        ],
       ),
     );
   }

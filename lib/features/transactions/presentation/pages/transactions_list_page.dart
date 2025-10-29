@@ -1,6 +1,7 @@
 // File: lib/features/transactions/presentation/pages/transactions_list_page.dart
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/presentation/theme/app_colors.dart';
 import '../../domain/entities/transaction_entity.dart';
 import 'transactions_form_page.dart';
@@ -16,11 +17,14 @@ class TransactionsListPage extends StatefulWidget {
 }
 
 class _TransactionsListPageState extends State<TransactionsListPage> {
-  final DateTime today = DateTime.now();
   final GetTransactions _getTransactions = GetTransactions(TransactionRepositoryImpl());
   final DeleteTransaction _deleteTransaction = DeleteTransaction(TransactionRepositoryImpl());
 
   List<TransactionEntity> _transactions = [];
+  String _searchKeyword = '';
+  String? _selectedCategory;
+  DateTime _selectedMonth = DateTime.now();
+
   bool _isLoading = false;
   String? _error;
   bool _isDisposed = false;
@@ -40,9 +44,7 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
   Future<void> _loadTransactions() async {
     if (_isDisposed || !mounted) return;
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
       final transactions = await _getTransactions();
@@ -60,102 +62,61 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
       }
     } finally {
       if (!_isDisposed && mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
-  }
-
-  void _showSafeSnackBar(String message, {bool isError = false}) {
-    if (_isDisposed || !mounted) return;
-
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_isDisposed && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: isError ? AppColors.error : AppColors.success,
-            duration: const Duration(seconds: 2),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    });
   }
 
   Future<void> _deleteTransactionById(String id) async {
     try {
       await _deleteTransaction(id);
       await _loadTransactions();
-
-      _showSafeSnackBar('Đã xóa giao dịch thành công');
-
+      _showSnack('Đã xóa giao dịch thành công');
     } catch (e) {
-      _showSafeSnackBar('Lỗi khi xóa giao dịch: $e', isError: true);
+      _showSnack('Lỗi khi xóa giao dịch: $e', isError: true);
     }
   }
-  List<TransactionEntity> get _monthlyTransactions {
-    final now = DateTime.now();
-    return _transactions.where((transaction) {
-      return transaction.date.year == now.year &&
-          transaction.date.month == now.month;
-    }).toList();
-  }
 
-  // Tính tổng thu nhập và chi tiêu từ dữ liệu thực
-  double get _monthlyExpenseTotal {
-    return _monthlyTransactions
-        .where((t) => t.type == TransactionType.expense)
-        .fold(0, (sum, transaction) => sum + transaction.amount.abs());
-  }
-
-  double get _monthlyIncomeTotal {
-    return _monthlyTransactions
-        .where((t) => t.type == TransactionType.income)
-        .fold(0, (sum, transaction) => sum + transaction.amount);
-  }
-
-  Map<DateTime, List<TransactionEntity>> get _groupedTransactions {
-    final Map<DateTime, List<TransactionEntity>> grouped = {};
-    for (var transaction in _monthlyTransactions) {
-      final date = DateTime(transaction.date.year, transaction.date.month, transaction.date.day);
-      if (!grouped.containsKey(date)) {
-        grouped[date] = [];
-      }
-      grouped[date]!.add(transaction);
-    }
-    final sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
-
-    return {
-      for (var key in sortedKeys) key: grouped[key]!
-    };
-  }
-
-  // Các phương thức format giữ nguyên
-  String _formatAmount(double amount) {
-    return amount.abs().toStringAsFixed(0);
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
-  }
-
-  void _navigateToEditTransaction(TransactionEntity transaction) {
-    if (_isDisposed || !mounted) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => TransactionsFormPage(
-          transaction: transaction,
-          onSuccess: _loadTransactions,
-        ),
+  void _showSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? AppColors.error : AppColors.success,
       ),
     );
   }
 
+  // --- FILTERED DATA --- //
+  List<TransactionEntity> get _filteredTransactions {
+    return _transactions.where((transaction) {
+      final matchMonth = transaction.date.year == _selectedMonth.year &&
+          transaction.date.month == _selectedMonth.month;
+
+      final matchKeyword = transaction.title
+          .toLowerCase()
+          .contains(_searchKeyword.toLowerCase());
+
+      final matchCategory = _selectedCategory == null ||
+          _selectedCategory == 'Tất cả' ||
+          transaction.category == _selectedCategory;
+
+      return matchMonth && matchKeyword && matchCategory;
+    }).toList();
+  }
+
+  Map<DateTime, List<TransactionEntity>> get _groupedTransactions {
+    final Map<DateTime, List<TransactionEntity>> grouped = {};
+    for (var transaction in _filteredTransactions) {
+      final date = DateTime(transaction.date.year, transaction.date.month, transaction.date.day);
+      grouped.putIfAbsent(date, () => []);
+      grouped[date]!.add(transaction);
+    }
+    final sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
+    return {for (var k in sortedKeys) k: grouped[k]!};
+  }
+
+  // --- BUILD UI --- //
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -166,24 +127,16 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
             _buildCustomHeader(),
             _buildMonthlySummary(),
             _buildTimeFilter(),
-            _buildSearchBox(),
+            _buildSearchAndFilter(),
             Expanded(
               child: _isLoading
-                  ? _buildLoadingState()
+                  ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
                   : _groupedTransactions.isEmpty
                   ? _buildEmptyState()
                   : _buildGroupedTransactionList(),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildLoadingState() {
-    return const Center(
-      child: CircularProgressIndicator(
-        color: AppColors.primary,
       ),
     );
   }
@@ -199,38 +152,34 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
           bottomRight: Radius.circular(24),
         ),
       ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () {
-                  if (!_isDisposed && mounted) {
-                    Navigator.pop(context);
-                  }
-                },
-              ),
-              const Text(
-                'Thu - chi',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 20,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(width: 48),
-            ],
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: const [
+          SizedBox(width: 48),
+          Text(
+            'Thu - chi',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+              color: Colors.white,
+            ),
           ),
+          SizedBox(width: 48),
         ],
       ),
     );
   }
 
   Widget _buildMonthlySummary() {
+    double totalIncome = _filteredTransactions
+        .where((t) => t.type == TransactionType.income)
+        .fold(0, (sum, t) => sum + t.amount);
+    double totalExpense = _filteredTransactions
+        .where((t) => t.type == TransactionType.expense)
+        .fold(0, (sum, t) => sum + t.amount.abs());
+
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+      margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -247,428 +196,201 @@ class _TransactionsListPageState extends State<TransactionsListPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildSummaryItem(
-              label: 'Tiền chi',
-              amount: _monthlyExpenseTotal,
-              color: AppColors.error
-          ),
-          Container(
-            width: 1,
-            height: 50,
-            color: AppColors.border,
-          ),
-          _buildSummaryItem(
-              label: 'Tiền thu',
-              amount: _monthlyIncomeTotal,
-              color: AppColors.success
-          ),
+          _buildSummaryItem('Tiền chi', totalExpense, AppColors.error),
+          Container(width: 1, height: 50, color: AppColors.border),
+          _buildSummaryItem('Tiền thu', totalIncome, AppColors.success),
         ],
       ),
     );
   }
 
-  Widget _buildSummaryItem({required String label, required double amount, required Color color}) {
+  Widget _buildSummaryItem(String label, double amount, Color color) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 14,
-            color: AppColors.textSecondary,
-          ),
-        ),
+        Text(label, style: TextStyle(color: AppColors.textSecondary)),
         const SizedBox(height: 4),
         Text(
-          _formatAmount(amount),
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
+          amount.toStringAsFixed(0),
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color),
         ),
       ],
     );
   }
 
   Widget _buildTimeFilter() {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+    final now = DateTime.now();
+    final isThisMonth = _selectedMonth.month == now.month && _selectedMonth.year == now.year;
+    final label = isThisMonth ? 'Tháng này' : DateFormat('MM/yyyy').format(_selectedMonth);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: GestureDetector(
+        onTap: _pickMonth,
+        child: Row(
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textPrimary),
+            ),
+            const Icon(Icons.keyboard_arrow_down, color: AppColors.textPrimary),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickMonth() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedMonth,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 1),
+      helpText: 'Chọn tháng và năm',
+    );
+    if (picked != null) {
+      setState(() => _selectedMonth = DateTime(picked.year, picked.month));
+    }
+  }
+
+  Widget _buildSearchAndFilter() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.start,
         children: [
-          Text(
-            'Tháng này',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textPrimary,
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.search, color: AppColors.textLight),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      decoration: const InputDecoration(
+                        hintText: 'Tìm theo tên giao dịch',
+                        border: InputBorder.none,
+                        isDense: true,
+                      ),
+                      onChanged: (value) => setState(() => _searchKeyword = value),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          Icon(Icons.keyboard_arrow_down, color: AppColors.textPrimary),
+          const SizedBox(width: 12),
+          InkWell(
+            onTap: _showCategoryFilter,
+            borderRadius: BorderRadius.circular(30),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: const BoxDecoration(
+                color: AppColors.primary,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.filter_list, color: Colors.white, size: 22),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSearchBox() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+  void _showCategoryFilter() {
+    final categories = {
+      'Tất cả',
+      ..._transactions.map((t) => t.category).toSet()
+    }.toList();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      child: Row(
-        children: [
-          Icon(Icons.search, color: AppColors.textLight),
-          const SizedBox(width: 12),
-          Text(
-            'Tìm giao dịch',
-            style: TextStyle(
-              fontSize: 16,
-              color: AppColors.textLight,
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Lọc theo danh mục',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
-          ),
-        ],
+            const Divider(),
+            ...categories.map((cat) => ListTile(
+              title: Text(cat),
+              trailing: _selectedCategory == cat
+                  ? const Icon(Icons.check, color: AppColors.primary)
+                  : null,
+              onTap: () {
+                setState(() => _selectedCategory = cat);
+                Navigator.pop(context);
+              },
+            )),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildGroupedTransactionList() {
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: _groupedTransactions.length,
-      itemBuilder: (context, index) {
-        final date = _groupedTransactions.keys.elementAt(index);
-        final transactions = _groupedTransactions[date]!;
-
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      children: _groupedTransactions.entries.map((entry) {
+        final date = entry.key;
+        final list = entry.value;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Text(
-                _formatDateHeader(date),
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
-              ),
+            const SizedBox(height: 10),
+            Text(
+              '${date.day}/${date.month}/${date.year}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            ...transactions.map((t) => InkWell(
-              onTap: () => _showTransactionDetail(t),
-              child: _buildTransactionItem(t),
-            )).toList(),
-            const SizedBox(height: 16),
+            const SizedBox(height: 6),
+            ...list.map(_buildTransactionItem),
+            const SizedBox(height: 12),
           ],
         );
-      },
+      }).toList(),
     );
   }
 
-  Widget _buildTransactionItem(TransactionEntity transaction) {
-    final isIncome = transaction.type == TransactionType.income;
-    final Color amountColor = isIncome ? AppColors.success : AppColors.error;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: transaction.color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              transaction.icon,
-              color: transaction.color,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  transaction.title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                Text(
-                  transaction.category,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            '${isIncome ? '+' : ''}${_formatAmount(transaction.amount)}',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: amountColor,
-            ),
-          ),
-        ],
+  Widget _buildTransactionItem(TransactionEntity t) {
+    final isIncome = t.type == TransactionType.income;
+    return ListTile(
+      leading: Icon(t.icon, color: t.color),
+      title: Text(t.title, style: const TextStyle(fontWeight: FontWeight.w500)),
+      subtitle: Text(t.category),
+      trailing: Text(
+        '${isIncome ? '+' : '-'}${t.amount.abs().toStringAsFixed(0)}',
+        style: TextStyle(
+          color: isIncome ? AppColors.success : AppColors.error,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
-  }
-
-  String _formatDateHeader(DateTime date) {
-    if (date.year == today.year && date.month == today.month && date.day == today.day) {
-      return 'Hôm nay';
-    }
-    return _formatDate(date);
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.receipt_long_outlined,
-            size: 80,
-            color: AppColors.textLight,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Không có giao dịch nào',
-            style: TextStyle(
-              fontSize: 16,
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showTransactionDetail(TransactionEntity transaction) {
-    if (_isDisposed || !mounted) return;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.only(top: 10),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(24),
-              topRight: Radius.circular(24),
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Chi tiết ${transaction.type == TransactionType.income ? 'thu nhập' : 'chi tiêu'}',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const Divider(height: 32),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: _buildTransactionDetailItem(transaction),
-              ),
-              const SizedBox(height: 24),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.delete_outline, color: AppColors.error),
-                        label: const Text(
-                          'Xóa',
-                          style: TextStyle(
-                            color: AppColors.error,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          side: const BorderSide(color: AppColors.error, width: 1.5),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onPressed: () {
-                          Navigator.pop(context);
-                          if (!_isDisposed && mounted) {
-                            _showDeleteConfirmation(transaction);
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.edit_outlined, color: Colors.white),
-                        label: const Text(
-                          'Chỉnh sửa',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 0,
-                        ),
-                        onPressed: () {
-                          Navigator.pop(context);
-                          if (!_isDisposed && mounted) {
-                            _navigateToEditTransaction(transaction);
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildTransactionDetailItem(TransactionEntity transaction) {
-    final isIncome = transaction.type == TransactionType.income;
-    final Color amountColor = isIncome ? AppColors.success : AppColors.textPrimary;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Container(
-          width: 14,
-          height: 14,
-          decoration: BoxDecoration(
-            color: transaction.color,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                transaction.title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              Text(
-                transaction.category,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              _formatDate(transaction.date),
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
-            ),
-            Text(
-              '${isIncome ? '+' : ''}${_formatAmount(transaction.amount)}',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: amountColor,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  void _showDeleteConfirmation(TransactionEntity transaction) {
-    if (_isDisposed || !mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 40),
-          content: Text(
-            'Bạn có chắc muốn xóa giao dịch "${transaction.title}" này không?',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 16, color: AppColors.textPrimary),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text('Quay lại', style: TextStyle(color: AppColors.textSecondary)),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                if (!_isDisposed && mounted) {
-                  _deleteTransactionById(transaction.id);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: const Text('Xóa', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
-      },
+    return const Center(
+      child: Text('Không có giao dịch nào'),
     );
   }
 }
