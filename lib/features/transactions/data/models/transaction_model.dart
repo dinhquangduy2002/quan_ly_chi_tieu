@@ -27,12 +27,12 @@ class TransactionModel extends TransactionEntity {
       category: data['category'] ?? '',
       amount: (data['amount'] ?? 0).toDouble(),
       type: data['type'] == 'income' ? TransactionType.income : TransactionType.expense,
-      date: (data['date'] as Timestamp).toDate(),
+      date: _parseTimestamp(data['date']), // SỬA 'data' THÀNH 'date'
       icon: IconData(data['icon_code'] ?? Icons.receipt.codePoint, fontFamily: 'MaterialIcons'),
       color: Color(data['color_value'] ?? Colors.purple.value),
       note: data['note'],
-      userId: data['user_id'] ?? '',
-      createdAt: (data['created_at'] as Timestamp).toDate(),
+      userId: data['user_id'] ?? '', // ĐẢM BẢO CÓ USER_ID
+      createdAt: _parseTimestamp(data['created_at']),
     );
   }
 
@@ -41,11 +41,11 @@ class TransactionModel extends TransactionEntity {
     'category': category,
     'amount': amount,
     'type': type == TransactionType.income ? 'income' : 'expense',
-    'date': Timestamp.fromDate(date),
+    'date': Timestamp.fromDate(date), // SỬA 'data' THÀNH 'date'
     'icon_code': icon.codePoint,
     'color_value': color.value,
     'note': note ?? '',
-    'user_id': userId,
+    'user_id': userId, // ĐẢM BẢO LƯU USER_ID
     'created_at': Timestamp.fromDate(createdAt),
   };
 
@@ -78,5 +78,9 @@ class TransactionModel extends TransactionEntity {
       createdAt: createdAt,
     );
   }
-
+  static DateTime _parseTimestamp(dynamic timestamp) {
+    if (timestamp == null) return DateTime.now();
+    if (timestamp is Timestamp) return timestamp.toDate();
+    return DateTime.now();
+  }
 }

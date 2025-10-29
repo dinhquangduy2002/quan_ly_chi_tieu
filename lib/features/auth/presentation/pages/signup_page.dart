@@ -44,7 +44,9 @@ class _SignupPageState extends State<SignupPage> {
       });
       return;
     }
-
+    if (mounted) {
+      context.go(AppRoutes.login);
+    }
     setState(() {
       _isLoading = true;
       _errorMessage = null;

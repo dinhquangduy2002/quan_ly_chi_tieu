@@ -1,6 +1,8 @@
 // File: lib/features/transactions/data/datasources/transaction_remote_datasource.dart
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:quan_ly_chi_tieu/core/data/firebase_remote_data_source.dart';
+import '../../domain/entities/transaction_entity.dart';
 import '../models/transaction_model.dart';
 
 abstract class TransactionRemoteDataSource {
@@ -15,6 +17,7 @@ abstract class TransactionRemoteDataSource {
 
 class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
   final FirebaseRemoteDS<TransactionModel> _remoteSource;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   TransactionRemoteDataSourceImpl()
       : _remoteSource = FirebaseRemoteDS<TransactionModel>(
@@ -23,10 +26,14 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
     toFirestore: (model) => model.toJson(),
   );
 
+  // SỬA THÀNH GETTER
+  String get _currentUserId => _auth.currentUser?.uid ?? '';
+
   @override
   Future<List<TransactionModel>> getTransactions() async {
     try {
-      return await _remoteSource.getAll();
+      final allTransactions = await _remoteSource.getAll();
+      return allTransactions.where((t) => t.userId == _currentUserId).toList();
     } catch (e) {
       throw Exception('Failed to fetch transactions: $e');
     }
@@ -37,11 +44,12 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
     try {
       final allTransactions = await _remoteSource.getAll();
       return allTransactions.where((transaction) =>
-      transaction.date.isAfter(start.subtract(const Duration(days: 1))) &&
+      transaction.userId == _currentUserId &&
+          transaction.date.isAfter(start.subtract(const Duration(days: 1))) &&
           transaction.date.isBefore(end.add(const Duration(days: 1)))
       ).toList();
     } catch (e) {
-      throw Exception('Failed to fetch transactions by date range: $e');
+      throw Exception('Failed to fetch transactions by data range: $e');
     }
   }
 
@@ -50,7 +58,8 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
     try {
       final allTransactions = await _remoteSource.getAll();
       return allTransactions.where((transaction) =>
-      transaction.type.toString() == 'TransactionType.$type'
+      transaction.userId == _currentUserId &&
+          transaction.type == (type == 'income' ? TransactionType.income : TransactionType.expense)
       ).toList();
     } catch (e) {
       throw Exception('Failed to fetch transactions by type: $e');
@@ -89,7 +98,9 @@ class TransactionRemoteDataSourceImpl implements TransactionRemoteDataSource {
   @override
   Stream<List<TransactionModel>> watchTransactions() {
     try {
-      return _remoteSource.watchAll();
+      return _remoteSource.watchAll().map(
+              (transactions) => transactions.where((t) => t.userId == _currentUserId).toList()
+      );
     } catch (e) {
       throw Exception('Failed to watch transactions: $e');
     }

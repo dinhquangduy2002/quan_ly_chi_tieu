@@ -1,4 +1,5 @@
 // File: lib/features/transactions/presentation/pages/transactions_form_page.dart
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/presentation/theme/app_colors.dart';
@@ -137,15 +138,13 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
           id: _isEditing ? widget.transaction!.id : '',
           title: _titleController.text,
           category: _selectedCategory,
-          amount: _selectedType == TransactionType.expense
-              ? -double.parse(_amountController.text)
-              : double.parse(_amountController.text),
+          amount: double.parse(_amountController.text),
           type: _selectedType,
           date: _selectedDate,
           icon: _selectedIcon,
           color: _selectedColor,
           note: _noteController.text.isNotEmpty ? _noteController.text : null,
-          userId: 'current_user_id',
+          userId: FirebaseAuth.instance.currentUser?.uid ?? '',
           createdAt: _isEditing ? widget.transaction!.createdAt : DateTime.now(),
         );
 

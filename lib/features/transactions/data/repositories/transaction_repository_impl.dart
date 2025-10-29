@@ -26,7 +26,7 @@ class TransactionRepositoryImpl implements TransactionRepository {
       final transactions = await remoteDataSource.getTransactionsByDateRange(start, end);
       return transactions.map((model) => model.toEntity()).toList();
     } catch (e) {
-      throw Exception('Repository: Failed to fetch transactions by date range - $e');
+      throw Exception('Repository: Failed to fetch transactions by data range - $e');
     }
   }
 

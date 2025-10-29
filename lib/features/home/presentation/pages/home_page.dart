@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../../../core/presentation/theme/app_colors.dart';
@@ -15,10 +16,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final GetTransactions _getTransactions =
   GetTransactions(TransactionRepositoryImpl());
-
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   double _totalBalance = 0;
-  double _monthlyIncome = 0;
-  double _monthlyExpense = 0;
   String _selectedType = 'Chi';
   bool _isLoading = true;
   DateTime _selectedMonth = DateTime.now();
@@ -61,9 +60,7 @@ class _HomePageState extends State<HomePage> {
     }
 
     setState(() {
-      _totalBalance = totalIncome + totalExpense; // số dư ví chung
-      _monthlyIncome = totalIncome; // tổng thu toàn thời gian
-      _monthlyExpense = totalExpense; // tổng chi toàn thời gian
+      _totalBalance = totalIncome - totalExpense;
     });
   }
 
@@ -82,7 +79,6 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _filteredTransactions = filtered.take(4).toList();
     });
-    _calculateWalletData();
   }
 
   Future<void> _pickMonth() async {
@@ -136,16 +132,21 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
-
+  String get _userName {
+    final user = _auth.currentUser;
+    if (user?.displayName != null && user!.displayName!.isNotEmpty) {
+      return user.displayName!;
+    }
+    return user?.email?.split('@').first ?? 'User';
+  }
   Widget _buildHeader() {
-    final userName = 'Hồng';
     return Row(
       children: [
         CircleAvatar(
           radius: 26,
           backgroundColor: AppColors.primary,
           child: Text(
-            userName[0].toUpperCase(),
+            _userName[0].toUpperCase(),
             style: const TextStyle(
                 color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
           ),
@@ -159,7 +160,7 @@ class _HomePageState extends State<HomePage> {
                   style:
                   TextStyle(fontSize: 14, color: AppColors.textSecondary)),
               Text(
-                userName,
+                _userName,
                 style: const TextStyle(
                     fontSize: 19,
                     fontWeight: FontWeight.bold,
@@ -321,6 +322,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildPieChartsSection() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      );
+    }
+
     final incomeGroups = _groupByCategory(TransactionType.income);
     final expenseGroups = _groupByCategory(TransactionType.expense);
 
