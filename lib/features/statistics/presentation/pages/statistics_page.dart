@@ -18,9 +18,14 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
   bool _isLoading = true;
   List<TransactionEntity> _allTransactions = [];
+  List<TransactionEntity> _filteredTransactions = [];
 
   double _totalIncome = 0;
   double _totalExpense = 0;
+
+  // Biến để lọc theo tháng
+  DateTime _selectedMonth = DateTime.now();
+  List<DateTime> _availableMonths = [];
 
   @override
   void initState() {
@@ -33,7 +38,8 @@ class _StatisticsPageState extends State<StatisticsPage> {
       final transactions = await _getTransactions();
       setState(() {
         _allTransactions = transactions;
-        _calculateTotals();
+        _updateAvailableMonths();
+        _applyMonthFilter(_selectedMonth); // Mặc định chọn tháng hiện tại
         _isLoading = false;
       });
     } catch (e) {
@@ -41,10 +47,42 @@ class _StatisticsPageState extends State<StatisticsPage> {
     }
   }
 
+  void _updateAvailableMonths() {
+    final months = <DateTime>{};
+
+    for (var transaction in _allTransactions) {
+      final year = transaction.date.year;
+      final month = transaction.date.month;
+      months.add(DateTime(year, month));
+    }
+
+    // Thêm tháng hiện tại nếu chưa có
+    final currentMonth = DateTime(DateTime.now().year, DateTime.now().month);
+    months.add(currentMonth);
+
+    // Sắp xếp các tháng từ mới nhất đến cũ nhất
+    _availableMonths = months.toList()
+      ..sort((a, b) => b.compareTo(a));
+  }
+
+  void _applyMonthFilter(DateTime selectedMonth) {
+    setState(() {
+      _selectedMonth = selectedMonth;
+
+      // Lọc theo tháng được chọn
+      _filteredTransactions = _allTransactions.where((transaction) {
+        return transaction.date.year == selectedMonth.year &&
+            transaction.date.month == selectedMonth.month;
+      }).toList();
+
+      _calculateTotals();
+    });
+  }
+
   void _calculateTotals() {
     double income = 0;
     double expense = 0;
-    for (var t in _allTransactions) {
+    for (var t in _filteredTransactions) {
       if (t.type == TransactionType.income) {
         income += t.amount;
       } else {
@@ -80,12 +118,78 @@ class _StatisticsPageState extends State<StatisticsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // 🔹 Danh sách tháng để lọc
+              _buildMonthFilter(),
+              const SizedBox(height: 20),
               _buildSummaryCards(),
               const SizedBox(height: 30),
               _buildBarChartSection(),
               const SizedBox(height: 50),
               _buildPieChartSection(),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 🔹 Danh sách tháng để lọc (hiển thị ngang)
+  Widget _buildMonthFilter() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Chọn tháng:',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 50,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              // Các tháng có dữ liệu
+              ..._availableMonths.map((month) => _buildMonthFilterChip(
+                label: '${month.month}/${month.year}',
+                isSelected: _selectedMonth.year == month.year &&
+                    _selectedMonth.month == month.month,
+                onTap: () => _applyMonthFilter(month),
+              )),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMonthFilterChip({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.primary : Colors.grey[200],
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isSelected ? AppColors.primary : Colors.grey[300]!,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? Colors.white : AppColors.textPrimary,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       ),
@@ -146,9 +250,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Biểu đồ thu - chi theo tháng',
-          style: TextStyle(
+        Text(
+          'Biểu đồ thu - chi tháng ${_selectedMonth.month}/${_selectedMonth.year}',
+          style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
             color: AppColors.textPrimary,
@@ -203,15 +307,19 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
   Map<int, Map<String, double>> _groupByMonth() {
     final Map<int, Map<String, double>> monthData = {};
-    for (var t in _allTransactions) {
-      int month = t.date.month;
-      monthData[month] ??= {'income': 0, 'expense': 0};
+
+    // Chỉ hiển thị tháng đang được chọn
+    final month = _selectedMonth.month;
+    monthData[month] = {'income': 0, 'expense': 0};
+
+    for (var t in _filteredTransactions) {
       if (t.type == TransactionType.income) {
         monthData[month]!['income'] = monthData[month]!['income']! + t.amount;
       } else {
         monthData[month]!['expense'] = monthData[month]!['expense']! + t.amount;
       }
     }
+
     return monthData;
   }
 
@@ -230,9 +338,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Tỷ lệ chi tiêu theo danh mục',
-          style: TextStyle(
+        Text(
+          'Tỷ lệ chi tiêu tháng ${_selectedMonth.month}/${_selectedMonth.year}',
+          style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
             color: AppColors.textPrimary,
@@ -292,7 +400,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
   Map<String, double> _groupByCategory(TransactionType type) {
     final map = <String, double>{};
-    for (var t in _allTransactions.where((e) => e.type == type)) {
+    for (var t in _filteredTransactions.where((e) => e.type == type)) {
       map[t.category] = (map[t.category] ?? 0) + t.amount;
     }
     return map;

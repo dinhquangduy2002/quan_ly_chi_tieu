@@ -5,6 +5,7 @@ import '../../../../core/presentation/theme/app_colors.dart';
 import '../../../transactions/data/repositories/transaction_repository_impl.dart';
 import '../../../transactions/domain/entities/transaction_entity.dart';
 import '../../../transactions/domain/usecases/get_transactions.dart';
+import 'home_search_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -171,7 +172,12 @@ class _HomePageState extends State<HomePage> {
         ),
         IconButton(
           icon: Icon(Icons.search, color: AppColors.textPrimary, size: 28),
-          onPressed: () {},
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const HomeSearchPage()),
+            );
+          },
         ),
         IconButton(
           icon: Icon(Icons.notifications_outlined,
