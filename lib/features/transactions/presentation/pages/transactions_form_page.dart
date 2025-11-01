@@ -63,6 +63,7 @@ class _TransactionsFormPageState extends State<TransactionsFormPage> {
     Icons.favorite,
     Icons.restaurant,
     Icons.local_hospital,
+    Icons.money,
   ];
 
   final List<Color> _colors = [

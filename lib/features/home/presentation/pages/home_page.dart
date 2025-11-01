@@ -15,8 +15,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final GetTransactions _getTransactions =
-  GetTransactions(TransactionRepositoryImpl());
+  final GetTransactions _getTransactions = GetTransactions(TransactionRepositoryImpl());
   final FirebaseAuth _auth = FirebaseAuth.instance;
   double _totalBalance = 0;
   String _selectedType = 'Chi';
@@ -46,7 +45,7 @@ class _HomePageState extends State<HomePage> {
       setState(() => _isLoading = false);
     }
   }
-
+  // Tính toán số dư
   void _calculateWalletData() {
     double totalIncome = 0;
     double totalExpense = 0;
